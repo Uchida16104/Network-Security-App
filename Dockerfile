@@ -11,7 +11,7 @@ FROM ubuntu:22.04 AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 ENV PHP_VERSION=8.1
-ENV NODE_VERSION=18
+ENV NODE_VERSION=24
 
 # Set working directory
 WORKDIR /app
