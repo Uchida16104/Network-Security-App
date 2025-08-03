@@ -103,9 +103,7 @@ RUN useradd -m -s /bin/bash -u 1001 appuser \
 COPY --chown=appuser:appuser . /app/
 
 # Install PHP dependencies
-RUN if [ -f /app/composer.json ]; then \
-      cd /app && composer install --no-dev --optimize-autoloader --no-interaction; \
-    fi
+RUN cd /app && composer install --no-dev --optimize-autoloader --no-interaction
 
 # Install Node.js dependencies and build assets
 RUN cd /app && npm ci --only=production \
