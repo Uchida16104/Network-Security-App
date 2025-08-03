@@ -20,13 +20,13 @@
   },
   "scripts": {
     "post-root-package-install": [
-      "[ -f artisan ] && @php artisan key:generate --ansi || echo 'artisan file not found, skipping key generation'"
+      "[ -f artisan ] && php artisan key:generate --ansi || echo 'artisan file not found, skipping key generation'"
     ],
     "post-install-cmd": [
-      "[ -f artisan ] && @php artisan migrate --force --ansi || echo 'artisan file not found, skipping migration'"
+      "[ -f artisan ] && php artisan migrate --force --ansi || echo 'artisan file not found, skipping migration'"
     ],
     "post-update-cmd": [
-      "[ -f artisan ] && @php artisan migrate --force --ansi || echo 'artisan file not found, skipping migration'"
+      "[ -f artisan ] && php artisan migrate --force --ansi || echo 'artisan file not found, skipping migration'"
     ]
   },
   "minimum-stability": "stable",
