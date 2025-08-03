@@ -209,6 +209,12 @@ RUN sed -i 's/listen = \/run\/php\/php8.1-fpm.sock/listen = 127.0.0.1:9000/' /et
 RUN rm -f /etc/nginx/sites-enabled/default \
     && ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
+COPY start.sh /app/start.sh
+
+COPY network-monitor.sh /app/network-monitor.sh
+
+COPY health-check.sh /app/health-check.sh
+
 RUN chmod +x /app/start.sh
 
 RUN chmod +x /app/health-check.sh
