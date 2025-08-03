@@ -1,0 +1,21 @@
+/app/storage/logs/*.log {
+    daily
+    missingok
+    rotate 30
+    compress
+    delaycompress
+    notifempty
+    copytruncate
+    su appuser appuser
+}
+
+/var/log/network-security/*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    copytruncate
+    su appuser appuser
+}
