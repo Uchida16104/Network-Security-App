@@ -207,95 +207,9 @@ RUN sed -i 's/listen = \/run\/php\/php8.1-fpm.sock/listen = 127.0.0.1:9000/' /et
 RUN rm -f /etc/nginx/sites-enabled/default \
     && ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
-# Create startup script
-RUN cat > /app/start.sh << 'EOF'
-#!/bin/bash
-set -e
-
-echo "=== Network Security App Starting ==="
-echo "Author: Hirotoshi Uchida"
-echo "Homepage: https://hirotoshiuchida.onrender.com"
-echo "======================================"
-
-# Wait for network interface to be ready
-sleep 2
-
-# Detect network interface
-INTERFACE=$(ip route | grep default | awk '{print $5}' | head -1 || echo "eth0")
-echo "Detected network interface: $INTERFACE"
-export NETWORK_INTERFACE=$INTERFACE
-
-# Laravel optimizations
-echo "Optimizing Laravel..."
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
-
-# Run database migrations
-echo "Running database migrations..."
-php artisan migrate --force
-
-# Create storage link
-php artisan storage:link
-
-# Initialize network monitoring
-echo "Initializing network monitoring..."
-php artisan network:initialize --interface=$INTERFACE || true
-
-# Start services with supervisor
-echo "Starting services..."
-exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf
-EOF
-
 RUN chmod +x /app/start.sh
 
-# Create health check script
-RUN cat > /app/health-check.sh << 'EOF'
-#!/bin/bash
-
-# Check if services are running
-if ! pgrep -f "php-fpm" > /dev/null; then
-    echo "PHP-FPM is not running"
-    exit 1
-fi
-
-if ! pgrep -f "nginx" > /dev/null; then
-    echo "Nginx is not running"
-    exit 1
-fi
-
-# Check API endpoint
-if ! curl -f -s http://127.0.0.1:8080/api/health-check > /dev/null; then
-    echo "API health check failed"
-    exit 1
-fi
-
-echo "All services are healthy"
-exit 0
-EOF
-
 RUN chmod +x /app/health-check.sh
-
-# Create network monitoring script
-RUN cat > /app/network-monitor.sh << 'EOF'
-#!/bin/bash
-
-echo "Starting network monitoring daemon..."
-
-while true; do
-    # Run network discovery
-    php /app/artisan network:discover 2>/dev/null || true
-    
-    # Run security monitoring
-    php /app/artisan security:monitor 2>/dev/null || true
-    
-    # Run traffic analysis
-    php /app/artisan traffic:analyze 2>/dev/null || true
-    
-    # Wait 30 seconds before next iteration
-    sleep 30
-done
-EOF
 
 RUN chmod +x /app/network-monitor.sh
 
