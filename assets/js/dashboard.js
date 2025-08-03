@@ -84,8 +84,14 @@ class NetworkSecurityDashboard {
      * Initialize charts
      */
     initializeCharts() {
-        this.initTrafficChart();
-        this.initProtocolChart();
+        try {
+            this.initTrafficChart();
+            this.initProtocolChart();
+            console.log('Charts initialized successfully');
+        } catch (error) {
+            console.error('Chart initialization failed:', error);
+            this.showNotification('Chart initialization failed', 'danger');
+        }
     }
     
     /**
