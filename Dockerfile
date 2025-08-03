@@ -364,7 +364,7 @@ ENV SECURITY_ALERTS=true
 CMD ["/app/start.sh"]
 
 # Build information
-LABEL maintainer="Hirotoshi Uchida <admin@hirotoshiuchida.onrender.com>"
+LABEL maintainer="Hirotoshi Uchida <contact.hirotoshiuchida@gmail.com>"
 LABEL description="Network Security Monitoring Application"
 LABEL version="1.0.0"
 LABEL homepage="https://hirotoshiuchida.onrender.com"
