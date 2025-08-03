@@ -624,9 +624,17 @@ class NetworkController extends Controller
         return $connections;
     }
     
+    /**
+     * Parse memory info from /proc/meminfo
+     */
     private function parseMemInfo($output): array
     {
         $memInfo = ['total' => 0, 'free' => 0, 'available' => 0];
+        
+        if (empty($output)) {
+            return $memInfo;
+        }
+        
         $lines = explode("\n", $output);
         
         foreach ($lines as $line) {
@@ -640,6 +648,44 @@ class NetworkController extends Controller
         }
         
         return $memInfo;
+    }
+    
+    /**
+     * Validate IP address format
+     */
+    private function validateIpAddress(string $ip): bool
+    {
+        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            return false;
+        }
+        
+        $octets = explode('.', $ip);
+        foreach ($octets as $octet) {
+            $num = intval($octet);
+            if ($num < 0 || $num > 255) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Sanitize shell command input
+     */
+    private function sanitizeShellInput(string $input): string
+    {
+        // Remove dangerous characters
+        $input = preg_replace('/[;&|`$()]/', '', $input);
+        return escapeshellarg(trim($input));
+    }
+    
+    /**
+     * Validate port number
+     */
+    private function validatePort(int $port): bool
+    {
+        return $port >= 1 && $port <= 65535;
     }
     
     private function extractProtocol($data): string
