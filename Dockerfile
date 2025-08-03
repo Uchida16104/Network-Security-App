@@ -69,6 +69,8 @@ RUN apt-get update && apt-get install -y \
     php${PHP_VERSION}-opcache \
     && rm -rf /var/lib/apt/lists/*
 
+COPY config/hhvm.ini /app/hhvm.ini
+
 # Install HHVM
 RUN wget -O - https://dl.hhvm.com/conf/hhvm.gpg.key | apt-key add - \
     && echo "deb https://dl.hhvm.com/ubuntu $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/hhvm.list \
