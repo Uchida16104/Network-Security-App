@@ -201,12 +201,14 @@ RUN chmod u+s /usr/bin/nmap \
     && chmod u+s /usr/bin/traceroute \
     && chmod u+s /usr/bin/tshark
 
-# Set directory permissions
+# Set directory permissions including supervisor logs
 RUN chown -R appuser:appuser /app/storage \
     && chown -R appuser:appuser /app/bootstrap/cache \
+    && chown -R appuser:appuser /var/log/supervisor \
     && chmod -R 755 /app/storage \
     && chmod -R 755 /app/bootstrap/cache \
-    && chmod -R 755 /app/public
+    && chmod -R 755 /app/public \
+    && chmod -R 755 /var/log/supervisor
 
 # Create SQLite database
 RUN touch /app/storage/database.sqlite \
