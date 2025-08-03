@@ -15,11 +15,6 @@ ENV NODE_VERSION=18
 
 # Set working directory
 WORKDIR /app
-
-# — Add HHVM apt repo so ‘apt-get install hhvm’ actually works:
-RUN wget -O - https://dl.hhvm.com/conf/hhvm.gpg.key | apt-key add - \
-    && echo "deb https://dl.hhvm.com/ubuntu $(lsb_release -sc) main" \
-       | tee /etc/apt/sources.list.d/hhvm.list
        
 # Install system dependencies and network tools
 RUN apt-get update && apt-get install -y \
