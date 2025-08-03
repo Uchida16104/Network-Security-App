@@ -1,0 +1,316 @@
+# Render.com Configuration for Network Security App
+# Author: Hirotoshi Uchida
+# Project: Network Security App
+# Repository: https://github.com/Uchida16104/Network-Security-App
+
+services:
+  # Main Web Service (PHP/Laravel with HHVM)
+  - type: web
+    name: network-security-app
+    env: docker
+    dockerfilePath: ./Dockerfile
+    region: oregon
+    plan: starter
+    branch: main
+    rootDir: .
+    
+    # Environment Variables
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: false
+      - key: APP_KEY
+        generateValue: true
+      - key: APP_NAME
+        value: "Network Security App"
+      - key: APP_URL
+        value: https://network-security-app.onrender.com
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: LOG_LEVEL
+        value: info
+      - key: DB_CONNECTION
+        value: sqlite
+      - key: DB_DATABASE
+        value: /app/storage/database.sqlite
+      - key: CACHE_DRIVER
+        value: file
+      - key: QUEUE_CONNECTION
+        value: sync
+      - key: SESSION_DRIVER
+        value: file
+      - key: SESSION_LIFETIME
+        value: 120
+      - key: NETWORK_INTERFACE
+        value: eth0
+      - key: SCAN_TIMEOUT
+        value: 30
+      - key: MONITOR_INTERVAL
+        value: 5
+      - key: MAX_SCAN_RANGE
+        value: 254
+      - key: ENABLE_REAL_TIME
+        value: true
+      - key: SECURITY_ALERTS
+        value: true
+      - key: DEVELOPER_NAME
+        value: "Hirotoshi Uchida"
+      - key: DEVELOPER_HOMEPAGE
+        value: "https://hirotoshiuchida.onrender.com"
+      - key: GITHUB_REPO
+        value: "https://github.com/Uchida16104/Network-Security-App"
+    
+    # Build Command
+    buildCommand: |
+      echo "Installing system dependencies..."
+      apt-get update && apt-get install -y \
+        nmap \
+        tcpdump \
+        tshark \
+        wireshark \
+        net-tools \
+        iproute2 \
+        arp-scan \
+        traceroute \
+        dnsutils \
+        iputils-ping \
+        netcat \
+        curl \
+        wget \
+        vim \
+        htop \
+        iftop \
+        iotop \
+        lsof \
+        strace \
+        procps \
+        psmisc \
+        && echo "System dependencies installed successfully"
+      
+      echo "Setting up PHP/Laravel environment..."
+      composer install --no-dev --optimize-autoloader
+      php artisan config:cache
+      php artisan route:cache
+      php artisan view:cache
+      
+      echo "Creating storage directories..."
+      mkdir -p storage/logs
+      mkdir -p storage/framework/cache
+      mkdir -p storage/framework/sessions
+      mkdir -p storage/framework/views
+      mkdir -p storage/app/public
+      
+      echo "Setting permissions..."
+      chmod -R 755 storage
+      chmod -R 755 bootstrap/cache
+      
+      echo "Compiling assets..."
+      npm install
+      npm run production
+      
+      echo "Setting up network monitoring tools..."
+      chmod +x scripts/setup-network-tools.sh
+      ./scripts/setup-network-tools.sh
+      
+      echo "Build completed successfully"
+    
+    # Start Command
+    startCommand: |
+      echo "Starting Network Security App..."
+      
+      # Create database if it doesn't exist
+      touch /app/storage/database.sqlite
+      php artisan migrate --force
+      
+      # Start background network monitoring
+      php artisan queue:work --daemon &
+      
+      # Start HHVM with network monitoring
+      hhvm -m server -p 8080 -c /app/hhvm.ini &
+      
+      # Start PHP-FPM with Laravel
+      php-fpm &
+      
+      # Start Nginx
+      nginx -g "daemon off;"
+    
+    # Health Check
+    healthCheckPath: /api/health-check
+    
+    # Auto Deploy
+    autoDeploy: true
+    
+    # Disk Storage
+    disk:
+      name: network-security-data
+      mountPath: /app/storage
+      sizeGB: 1
+    
+    # Custom Headers
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-XSS-Protection
+        value: 1; mode=block
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self' ws: wss:;"
+    
+    # Custom Routes
+    routes:
+      - type: rewrite
+        source: /assets/*
+        destination: /public/assets/$1
+      - type: rewrite
+        source: /api/*
+        destination: /index.php
+      - type: rewrite
+        source: /*
+        destination: /index.php
+
+  # Background Worker Service
+  - type: worker
+    name: network-monitor-worker
+    env: docker
+    dockerfilePath: ./Dockerfile
+    region: oregon
+    plan: starter
+    branch: main
+    rootDir: .
+    
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: false
+      - key: WORKER_TYPE
+        value: network_monitor
+      - key: MONITOR_INTERVAL
+        value: 10
+      - key: NETWORK_INTERFACE
+        value: eth0
+    
+    startCommand: |
+      echo "Starting Network Monitor Worker..."
+      php artisan network:monitor --daemon
+    
+    autoDeploy: true
+
+  # Redis Service for Caching (Optional)
+  - type: redis
+    name: network-security-cache
+    region: oregon
+    plan: starter
+    maxmemoryPolicy: allkeys-lru
+    
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: Allow all connections
+
+# Database (using built-in SQLite for simplicity)
+databases:
+  - name: network-security-db
+    databaseName: network_security
+    user: network_admin
+    region: oregon
+    plan: starter
+
+# Environment Groups
+envVarGroups:
+  - name: network-security-config
+    envVars:
+      - key: SCAN_CONCURRENCY
+        value: 5
+      - key: ALERT_THRESHOLD
+        value: 10
+      - key: CACHE_TTL
+        value: 300
+      - key: SESSION_TIMEOUT
+        value: 3600
+      - key: MAX_DEVICES
+        value: 1000
+      - key: ENABLE_LOGGING
+        value: true
+      - key: LOG_RETENTION_DAYS
+        value: 30
+      - key: BACKUP_ENABLED
+        value: true
+      - key: BACKUP_INTERVAL_HOURS
+        value: 24
+
+# Cron Jobs (if supported)
+cronJobs:
+  - name: cleanup-logs
+    schedule: "0 0 * * *"
+    command: "php artisan logs:cleanup"
+  
+  - name: network-health-check
+    schedule: "*/5 * * * *"
+    command: "php artisan network:health-check"
+  
+  - name: security-scan
+    schedule: "0 */4 * * *"
+    command: "php artisan security:scan"
+  
+  - name: backup-database
+    schedule: "0 2 * * *"
+    command: "php artisan backup:database"
+
+# Build Configuration
+build:
+  commands:
+    - echo "=== Network Security App Build Process ==="
+    - echo "Author: Hirotoshi Uchida"
+    - echo "Homepage: https://hirotoshiuchida.onrender.com"
+    - echo "Repository: https://github.com/Uchida16104/Network-Security-App"
+    - echo "============================================="
+    
+    # Install system packages
+    - apt-get update
+    - apt-get install -y software-properties-common
+    - apt-get install -y nmap tcpdump tshark wireshark net-tools
+    - apt-get install -y iproute2 arp-scan traceroute dnsutils
+    - apt-get install -y iputils-ping netcat curl wget
+    - apt-get install -y nginx php8.1-fpm php8.1-cli
+    - apt-get install -y php8.1-mysql php8.1-sqlite3 php8.1-redis
+    - apt-get install -y php8.1-xml php8.1-mbstring php8.1-curl
+    - apt-get install -y php8.1-zip php8.1-gd php8.1-bcmath
+    - apt-get install -y nodejs npm
+    
+    # Install HHVM
+    - wget -O - https://dl.hhvm.com/conf/hhvm.gpg.key | apt-key add -
+    - echo "deb https://dl.hhvm.com/ubuntu $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/hhvm.list
+    - apt-get update
+    - apt-get install -y hhvm
+    
+    # Configure network tools permissions
+    - chmod u+s /usr/bin/nmap
+    - chmod u+s /usr/bin/tcpdump
+    - chmod u+s /usr/sbin/arp-scan
+    - chmod u+s /bin/ping
+    - chmod u+s /usr/bin/traceroute
+    
+    # Install Composer
+    - curl -sS https://getcomposer.org/installer | php
+    - mv composer.phar /usr/local/bin/composer
+    - chmod +x /usr/local/bin/composer
+    
+    # Create app directory structure
+    - mkdir -p /app/storage/logs
+    - mkdir -p /app/storage/app/public
+    - mkdir -p /app/storage/framework/{cache,sessions,views}
+    - mkdir -p /app/bootstrap/cache
+    - mkdir -p /app/public/assets/{css,js,images}
+    
+    # Set correct permissions
+    - chown -R www-data:www-data /app/storage
+    - chown -R www-data:www-data /app/bootstrap/cache
