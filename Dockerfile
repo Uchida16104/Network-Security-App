@@ -149,8 +149,6 @@ RUN apt-get update && apt-get install -y \
     php${PHP_VERSION}-bcmath \
     php${PHP_VERSION}-intl \
     php${PHP_VERSION}-opcache \
-    # HHVM
-    hhvm \
     # System utilities
     supervisor \
     cron \
