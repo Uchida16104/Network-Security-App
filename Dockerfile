@@ -71,13 +71,6 @@ RUN apt-get update && apt-get install -y \
 
 COPY config/hhvm.ini /app/hhvm.ini
 
-# Install HHVM
-RUN wget -O - https://dl.hhvm.com/conf/hhvm.gpg.key | apt-key add - \
-    && echo "deb https://dl.hhvm.com/ubuntu $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/hhvm.list \
-    && apt-get update \
-    && apt-get install -y hhvm \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install Node.js and npm
 RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
     && apt-get install -y nodejs \
