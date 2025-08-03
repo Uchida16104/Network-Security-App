@@ -219,29 +219,7 @@ RUN mkdir -p /var/log/network-security \
     && chmod -R 755 /var/log/network-security
 
 # Set up log rotation
-RUN cat > /etc/logrotate.d/network-security << 'EOF'
-/app/storage/logs/*.log {
-    daily
-    missingok
-    rotate 30
-    compress
-    delaycompress
-    notifempty
-    copytruncate
-    su appuser appuser
-}
-
-/var/log/network-security/*.log {
-    daily
-    missingok
-    rotate 7
-    compress
-    delaycompress
-    notifempty
-    copytruncate
-    su appuser appuser
-}
-EOF
+COPY logrotate.d/network-security /etc/logrotate/network-security
 
 # Expose ports
 EXPOSE 8080 9000
