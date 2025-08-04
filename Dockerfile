@@ -221,6 +221,16 @@ RUN if [ ! -f /app/public/index.php ]; then \
         chown appuser:appuser /app/public/index.php; \
     fi
 
+COPY NetworkController.php /app/public/NetworkController.php
+
+COPY NetworkMonitor.php /app/public/NetworkMonitor.php
+
+COPY index.html /app/public/index.html
+
+RUN mkdir -p /app/public/assets
+
+COPY assets/ /app/public/assets
+
 # Create SQLite database
 RUN touch /app/storage/database.sqlite \
     && chown appuser:appuser /app/storage/database.sqlite \
