@@ -190,7 +190,7 @@ COPY --from=builder --chown=appuser:appuser /app /app
 # Copy configuration files
 COPY --chown=root:root config/nginx.conf /etc/nginx/sites-available/default
 COPY --chown=root:root config/hhvm.ini /etc/hhvm/hhvm.ini
-COPY --chown=root:root config/php-fmp.conf /etc/php/${PHP_VERSION}/fmp/pool.d/www.conf
+COPY --chown=root:root config/php-fpm.conf /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf
 COPY --chown=root:root config/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Configure network tools permissions
@@ -204,20 +204,11 @@ RUN chmod u+s /usr/bin/nmap \
 # Set directory permissions including supervisor logs
 RUN chown -R appuser:appuser /app/storage \
     && chown -R appuser:appuser /app/bootstrap/cache \
+    && chown -R appuser:appuser /var/log/supervisor \
     && chmod -R 755 /app/storage \
     && chmod -R 755 /app/bootstrap/cache \
-    && chmod -R 755 /app/public
-
-# Create basic public directory with index.php if it doesn't exist
-RUN if [ ! -f /app/public/index.php ]; then \
-        mkdir -p /app/public && \
-        echo '<?php' > /app/public/index.php && \
-        echo 'echo "<h1>Network Security App</h1>";' >> /app/public/index.php && \
-        echo 'echo "<p>Application is running successfully!</p>";' >> /app/public/index.php && \
-        echo 'echo "<p>Author: Hirotoshi Uchida</p>";' >> /app/public/index.php && \
-        echo 'echo "<p>Homepage: <a href=\"https://hirotoshiuchida.onrender.com\">https://hirotoshiuchida.onrender.com</a></p>";' >> /app/public/index.php && \
-        chown appuser:appuser /app/public/index.php; \
-    fi
+    && chmod -R 755 /app/public \
+    && chmod -R 755 /var/log/supervisor
 
 # Create SQLite database
 RUN touch /app/storage/database.sqlite \
@@ -250,7 +241,7 @@ RUN mkdir -p /var/log/network-security \
     && chmod -R 755 /var/log/network-security
 
 # Set up log rotation
-COPY logrotate.d/network-security /etc/logrotate.d/network-security
+COPY logrotate.d/network-security /etc/logrotate/network-security
 
 # Expose ports
 EXPOSE 8080 9000
@@ -260,10 +251,10 @@ VOLUME ["/app/storage"]
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/ || exit 1
+    CMD /app/health-check.sh
 
-# DO NOT switch to appuser - supervisor needs root privileges
-# USER appuser
+# Switch to application user
+USER appuser
 
 # Set environment variables for the application
 ENV PATH="/app:${PATH}"
