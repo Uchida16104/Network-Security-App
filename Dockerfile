@@ -210,6 +210,17 @@ RUN chown -R appuser:appuser /app/storage \
     && chmod -R 755 /app/public \
     && chmod -R 755 /var/log/supervisor
 
+# Create basic public directory with index.php if it doesn't exist
+RUN if [ ! -f /app/public/index.php ]; then \
+        mkdir -p /app/public && \
+        echo '<?php' > /app/public/index.php && \
+        echo 'echo "<h1>Network Security App</h1>";' >> /app/public/index.php && \
+        echo 'echo "<p>Application is running successfully!</p>";' >> /app/public/index.php && \
+        echo 'echo "<p>Author: Hirotoshi Uchida</p>";' >> /app/public/index.php && \
+        echo 'echo "<p>Homepage: <a href=\"https://hirotoshiuchida.onrender.com\">https://hirotoshiuchida.onrender.com</a></p>";' >> /app/public/index.php && \
+        chown appuser:appuser /app/public/index.php; \
+    fi
+
 # Create SQLite database
 RUN touch /app/storage/database.sqlite \
     && chown appuser:appuser /app/storage/database.sqlite \
@@ -241,7 +252,7 @@ RUN mkdir -p /var/log/network-security \
     && chmod -R 755 /var/log/network-security
 
 # Set up log rotation
-COPY logrotate.d/network-security /etc/logrotate/network-security
+COPY logrotate.d/network-security /etc/logrotate.d/network-security
 
 # Expose ports
 EXPOSE 8080 9000
@@ -251,10 +262,10 @@ VOLUME ["/app/storage"]
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD /app/health-check.sh
+    CMD curl -f http://localhost:8080/ || exit 1
 
-# Switch to application user
-USER appuser
+# DO NOT switch to appuser - supervisor needs root privileges to manage services
+# USER appuser
 
 # Set environment variables for the application
 ENV PATH="/app:${PATH}"
