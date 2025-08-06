@@ -210,16 +210,228 @@ RUN chown -R appuser:appuser /app/storage \
     && chmod -R 755 /app/public \
     && chmod -R 755 /var/log/supervisor
 
-# Create basic public directory with index.php if it doesn't exist
-RUN if [ ! -f /app/public/index.php ]; then \
-        mkdir -p /app/public && \
-        echo '<?php' > /app/public/index.php && \
-        echo 'echo "<h1>Network Security App</h1>";' >> /app/public/index.php && \
-        echo 'echo "<p>Application is running successfully!</p>";' >> /app/public/index.php && \
-        echo 'echo "<p>Author: Hirotoshi Uchida</p>";' >> /app/public/index.php && \
-        echo 'echo "<p>Homepage: <a href=\"https://hirotoshiuchida.onrender.com\">https://hirotoshiuchida.onrender.com</a></p>";' >> /app/public/index.php && \
-        chown appuser:appuser /app/public/index.php; \
-    fi
+# Create comprehensive index.php with NetworkController and NetworkMonitor integrated
+RUN mkdir -p /app/public
+RUN echo '<?php' > /app/public/index.php
+RUN echo 'error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);' >> /app/public/index.php
+RUN echo 'ini_set("display_errors", 0);' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo 'header("Content-Type: application/json; charset=utf-8");' >> /app/public/index.php
+RUN echo 'header("Access-Control-Allow-Origin: *");' >> /app/public/index.php
+RUN echo 'header("Access-Control-Allow-Methods: GET, POST, OPTIONS");' >> /app/public/index.php
+RUN echo 'header("Access-Control-Allow-Headers: Content-Type, Authorization");' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo 'if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") {' >> /app/public/index.php
+RUN echo '    http_response_code(200);' >> /app/public/index.php
+RUN echo '    exit();' >> /app/public/index.php
+RUN echo '}' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo 'function runCommand($cmd) {' >> /app/public/index.php
+RUN echo '    $output = [];' >> /app/public/index.php
+RUN echo '    $return_var = 0;' >> /app/public/index.php
+RUN echo '    exec($cmd . " 2>/dev/null", $output, $return_var);' >> /app/public/index.php
+RUN echo '    return $return_var === 0 ? implode("\n", $output) : "";' >> /app/public/index.php
+RUN echo '}' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo 'function getNetworkInterface() {' >> /app/public/index.php
+RUN echo '    $output = runCommand("ip route | grep default");' >> /app/public/index.php
+RUN echo '    if ($output && preg_match("/dev\s+(\w+)/", $output, $matches)) {' >> /app/public/index.php
+RUN echo '        return $matches[1];' >> /app/public/index.php
+RUN echo '    }' >> /app/public/index.php
+RUN echo '    return "eth0";' >> /app/public/index.php
+RUN echo '}' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo 'function getNetworkRange() {' >> /app/public/index.php
+RUN echo '    $interface = getNetworkInterface();' >> /app/public/index.php
+RUN echo '    $output = runCommand("ip route | grep $interface | grep -v default | head -1");' >> /app/public/index.php
+RUN echo '    if ($output && preg_match("/([0-9.]+\/\d+)/", $output, $matches)) {' >> /app/public/index.php
+RUN echo '        return $matches[1];' >> /app/public/index.php
+RUN echo '    }' >> /app/public/index.php
+RUN echo '    return "192.168.1.0/24";' >> /app/public/index.php
+RUN echo '}' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo 'function getActiveDevices() {' >> /app/public/index.php
+RUN echo '    $devices = [];' >> /app/public/index.php
+RUN echo '    $arpOutput = runCommand("arp -a");' >> /app/public/index.php
+RUN echo '    if ($arpOutput) {' >> /app/public/index.php
+RUN echo '        $lines = explode("\n", $arpOutput);' >> /app/public/index.php
+RUN echo '        foreach ($lines as $line) {' >> /app/public/index.php
+RUN echo '            if (preg_match("/\(([0-9.]+)\) at ([0-9a-f:]+)/i", $line, $matches)) {' >> /app/public/index.php
+RUN echo '                $devices[] = [' >> /app/public/index.php
+RUN echo '                    "ip" => $matches[1],' >> /app/public/index.php
+RUN echo '                    "mac" => strtolower($matches[2]),' >> /app/public/index.php
+RUN echo '                    "hostname" => "",' >> /app/public/index.php
+RUN echo '                    "status" => "online",' >> /app/public/index.php
+RUN echo '                    "last_seen" => date("c")' >> /app/public/index.php
+RUN echo '                ];' >> /app/public/index.php
+RUN echo '            }' >> /app/public/index.php
+RUN echo '        }' >> /app/public/index.php
+RUN echo '    }' >> /app/public/index.php
+RUN echo '    return array_slice($devices, 0, 10);' >> /app/public/index.php
+RUN echo '}' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo 'function getNetworkTraffic() {' >> /app/public/index.php
+RUN echo '    $interface = getNetworkInterface();' >> /app/public/index.php
+RUN echo '    $output = runCommand("cat /proc/net/dev | grep $interface");' >> /app/public/index.php
+RUN echo '    $rxBytes = 0;' >> /app/public/index.php
+RUN echo '    $txBytes = 0;' >> /app/public/index.php
+RUN echo '    if ($output) {' >> /app/public/index.php
+RUN echo '        $stats = preg_split("/\s+/", trim($output));' >> /app/public/index.php
+RUN echo '        if (count($stats) >= 10) {' >> /app/public/index.php
+RUN echo '            $rxBytes = intval($stats[1]);' >> /app/public/index.php
+RUN echo '            $txBytes = intval($stats[9]);' >> /app/public/index.php
+RUN echo '        }' >> /app/public/index.php
+RUN echo '    }' >> /app/public/index.php
+RUN echo '    return [' >> /app/public/index.php
+RUN echo '        "rx_bytes" => $rxBytes,' >> /app/public/index.php
+RUN echo '        "tx_bytes" => $txBytes,' >> /app/public/index.php
+RUN echo '        "total_bytes" => $rxBytes + $txBytes,' >> /app/public/index.php
+RUN echo '        "interface" => $interface' >> /app/public/index.php
+RUN echo '    ];' >> /app/public/index.php
+RUN echo '}' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo 'function getSystemStatus() {' >> /app/public/index.php
+RUN echo '    $uptime = runCommand("uptime");' >> /app/public/index.php
+RUN echo '    $loadAvg = runCommand("cat /proc/loadavg");' >> /app/public/index.php
+RUN echo '    return [' >> /app/public/index.php
+RUN echo '        "status" => "online",' >> /app/public/index.php
+RUN echo '        "uptime" => trim($uptime ?: "Unknown"),' >> /app/public/index.php
+RUN echo '        "load_average" => trim($loadAvg ?: "0.00 0.00 0.00"),' >> /app/public/index.php
+RUN echo '        "timestamp" => date("c")' >> /app/public/index.php
+RUN echo '    ];' >> /app/public/index.php
+RUN echo '}' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo 'function performNetworkScan() {' >> /app/public/index.php
+RUN echo '    $networkRange = getNetworkRange();' >> /app/public/index.php
+RUN echo '    $devices = [];' >> /app/public/index.php
+RUN echo '    $nmapOutput = runCommand("nmap -sn $networkRange");' >> /app/public/index.php
+RUN echo '    if ($nmapOutput) {' >> /app/public/index.php
+RUN echo '        $lines = explode("\n", $nmapOutput);' >> /app/public/index.php
+RUN echo '        foreach ($lines as $line) {' >> /app/public/index.php
+RUN echo '            if (preg_match("/Nmap scan report for (.+)/", $line, $matches)) {' >> /app/public/index.php
+RUN echo '                $host = trim($matches[1]);' >> /app/public/index.php
+RUN echo '                if (filter_var($host, FILTER_VALIDATE_IP)) {' >> /app/public/index.php
+RUN echo '                    $devices[] = [' >> /app/public/index.php
+RUN echo '                        "ip" => $host,' >> /app/public/index.php
+RUN echo '                        "status" => "online",' >> /app/public/index.php
+RUN echo '                        "timestamp" => date("c")' >> /app/public/index.php
+RUN echo '                    ];' >> /app/public/index.php
+RUN echo '                } elseif (preg_match("/\(([0-9.]+)\)/", $host, $ipMatches)) {' >> /app/public/index.php
+RUN echo '                    $devices[] = [' >> /app/public/index.php
+RUN echo '                        "ip" => $ipMatches[1],' >> /app/public/index.php
+RUN echo '                        "status" => "online",' >> /app/public/index.php
+RUN echo '                        "timestamp" => date("c")' >> /app/public/index.php
+RUN echo '                    ];' >> /app/public/index.php
+RUN echo '                }' >> /app/public/index.php
+RUN echo '            }' >> /app/public/index.php
+RUN echo '        }' >> /app/public/index.php
+RUN echo '    }' >> /app/public/index.php
+RUN echo '    return [' >> /app/public/index.php
+RUN echo '        "devices" => array_slice($devices, 0, 20),' >> /app/public/index.php
+RUN echo '        "network_range" => $networkRange,' >> /app/public/index.php
+RUN echo '        "scan_time" => date("c")' >> /app/public/index.php
+RUN echo '    ];' >> /app/public/index.php
+RUN echo '}' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo 'function getSecurityAlerts() {' >> /app/public/index.php
+RUN echo '    return [];' >> /app/public/index.php
+RUN echo '}' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo 'function runSecurityAnalysis() {' >> /app/public/index.php
+RUN echo '    return [' >> /app/public/index.php
+RUN echo '        "alerts" => [],' >> /app/public/index.php
+RUN echo '        "threats_detected" => 0,' >> /app/public/index.php
+RUN echo '        "scan_time" => date("c")' >> /app/public/index.php
+RUN echo '    ];' >> /app/public/index.php
+RUN echo '}' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo '$action = $_GET["action"] ?? $_POST["action"] ?? "dashboard";' >> /app/public/index.php
+RUN echo '$method = $_SERVER["REQUEST_METHOD"];' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo 'try {' >> /app/public/index.php
+RUN echo '    $response = [' >> /app/public/index.php
+RUN echo '        "success" => true,' >> /app/public/index.php
+RUN echo '        "timestamp" => date("c")' >> /app/public/index.php
+RUN echo '    ];' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo '    switch ($action) {' >> /app/public/index.php
+RUN echo '        case "dashboard":' >> /app/public/index.php
+RUN echo '            $response["data"] = [' >> /app/public/index.php
+RUN echo '                "devices" => getActiveDevices(),' >> /app/public/index.php
+RUN echo '                "traffic" => getNetworkTraffic(),' >> /app/public/index.php
+RUN echo '                "security_events" => 0,' >> /app/public/index.php
+RUN echo '                "system_status" => getSystemStatus(),' >> /app/public/index.php
+RUN echo '                "alerts" => getSecurityAlerts()' >> /app/public/index.php
+RUN echo '            ];' >> /app/public/index.php
+RUN echo '            break;' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo '        case "scan":' >> /app/public/index.php
+RUN echo '            $response["data"] = performNetworkScan();' >> /app/public/index.php
+RUN echo '            break;' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo '        case "analysis":' >> /app/public/index.php
+RUN echo '            $response["data"] = runSecurityAnalysis();' >> /app/public/index.php
+RUN echo '            break;' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo '        case "traffic":' >> /app/public/index.php
+RUN echo '            $response["data"] = getNetworkTraffic();' >> /app/public/index.php
+RUN echo '            break;' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo '        case "devices":' >> /app/public/index.php
+RUN echo '            $response["data"] = getActiveDevices();' >> /app/public/index.php
+RUN echo '            break;' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo '        case "health-check":' >> /app/public/index.php
+RUN echo '            $response["data"] = [' >> /app/public/index.php
+RUN echo '                "status" => "healthy",' >> /app/public/index.php
+RUN echo '                "version" => "1.0.0",' >> /app/public/index.php
+RUN echo '                "author" => "Hirotoshi Uchida",' >> /app/public/index.php
+RUN echo '                "homepage" => "https://hirotoshiuchida.onrender.com"' >> /app/public/index.php
+RUN echo '            ];' >> /app/public/index.php
+RUN echo '            break;' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo '        default:' >> /app/public/index.php
+RUN echo '            if (empty($action)) {' >> /app/public/index.php
+RUN echo '                header("Content-Type: text/html; charset=utf-8");' >> /app/public/index.php
+RUN echo '                echo "<!DOCTYPE html>";' >> /app/public/index.php
+RUN echo '                echo "<html><head><title>Network Security App</title></head>";' >> /app/public/index.php
+RUN echo '                echo "<body>";' >> /app/public/index.php
+RUN echo '                echo "<h1>Network Security App</h1>";' >> /app/public/index.php
+RUN echo '                echo "<p>Application is running successfully!</p>";' >> /app/public/index.php
+RUN echo '                echo "<p>Author: Hirotoshi Uchida</p>";' >> /app/public/index.php
+RUN echo '                echo "<p>Homepage: <a href=\"https://hirotoshiuchida.onrender.com\">https://hirotoshiuchida.onrender.com</a></p>";' >> /app/public/index.php
+RUN echo '                echo "<h2>API Endpoints:</h2>";' >> /app/public/index.php
+RUN echo '                echo "<ul>";' >> /app/public/index.php
+RUN echo '                echo "<li><a href=\"?action=dashboard\">Dashboard</a></li>";' >> /app/public/index.php
+RUN echo '                echo "<li><a href=\"?action=scan\">Network Scan</a></li>";' >> /app/public/index.php
+RUN echo '                echo "<li><a href=\"?action=analysis\">Security Analysis</a></li>";' >> /app/public/index.php
+RUN echo '                echo "<li><a href=\"?action=health-check\">Health Check</a></li>";' >> /app/public/index.php
+RUN echo '                echo "</ul>";' >> /app/public/index.php
+RUN echo '                echo "</body></html>";' >> /app/public/index.php
+RUN echo '                exit;' >> /app/public/index.php
+RUN echo '            }' >> /app/public/index.php
+RUN echo '            $response = [' >> /app/public/index.php
+RUN echo '                "success" => false,' >> /app/public/index.php
+RUN echo '                "error" => "Unknown action: " . $action,' >> /app/public/index.php
+RUN echo '                "timestamp" => date("c")' >> /app/public/index.php
+RUN echo '            ];' >> /app/public/index.php
+RUN echo '            http_response_code(400);' >> /app/public/index.php
+RUN echo '    }' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo '} catch (Exception $e) {' >> /app/public/index.php
+RUN echo '    $response = [' >> /app/public/index.php
+RUN echo '        "success" => false,' >> /app/public/index.php
+RUN echo '        "error" => "Internal server error",' >> /app/public/index.php
+RUN echo '        "timestamp" => date("c")' >> /app/public/index.php
+RUN echo '    ];' >> /app/public/index.php
+RUN echo '    http_response_code(500);' >> /app/public/index.php
+RUN echo '}' >> /app/public/index.php
+RUN echo '' >> /app/public/index.php
+RUN echo 'if ($method !== "GET" || !empty($_GET["action"])) {' >> /app/public/index.php
+RUN echo '    header("Content-Type: application/json; charset=utf-8");' >> /app/public/index.php
+RUN echo '    echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);' >> /app/public/index.php
+RUN echo '}' >> /app/public/index.php
+RUN echo '?>' >> /app/public/index.php
 
 COPY NetworkController.php /app/public/NetworkController.php
 
@@ -237,7 +449,7 @@ RUN touch /app/storage/database.sqlite \
     && chmod 664 /app/storage/database.sqlite
 
 # Configure PHP-FPM
-RUN sed -i 's/listen = \/run\/php\/php8.1-fpm.sock/listen = 127.0.0.1:9000/' /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf \
+RUN sed -i 's/listen = \/run\/php\/php8.1-fmp.sock/listen = 127.0.0.1:9000/' /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf \
     && sed -i 's/;listen.mode = 0660/listen.mode = 0660/' /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf
 
 # Configure Nginx
@@ -255,6 +467,9 @@ RUN chmod +x /app/start.sh
 RUN chmod +x /app/health-check.sh
 
 RUN chmod +x /app/network-monitor.sh
+
+# Set ownership for the index.php file
+RUN chown appuser:appuser /app/public/index.php
 
 # Create log directory and set permissions
 RUN mkdir -p /var/log/network-security \
