@@ -47,7 +47,7 @@ RUN apt-get update && apt-get install -y \
     htop \
     lsof \
     strace \
-    procfs \
+    procps \
     psmisc \
     # Web server and PHP
     nginx \
@@ -139,6 +139,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 ENV PHP_VERSION=8.1
 ENV APP_ENV=production
+ENV APP_DEBUG=false
+
 ENV APP_DEBUG=false
 
 # Install runtime dependencies
