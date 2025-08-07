@@ -17,18 +17,23 @@ WORKDIR /app
 
 # Install system dependencies and network tools
 RUN apt-get update && apt-get install -y \
+    # Basic system tools
     software-properties-common \
+    apt-transport-https \
+    ca-certificates \
+    gnupg2 \
     curl \
     wget \
-    nginx \
-    php8.1-fpm \
-    php8.1-cli \
-    php8.1-common \
-    php8.1-curl \
-    php8.1-json \
+    unzip \
+    git \
+    supervisor \
+    cron \
+    logrotate \
+    # Network monitoring tools
     nmap \
     tcpdump \
     tshark \
+    wireshark \
     net-tools \
     iproute2 \
     arp-scan \
@@ -36,7 +41,31 @@ RUN apt-get update && apt-get install -y \
     dnsutils \
     iputils-ping \
     netcat \
-    supervisor \
+    iftop \
+    iotop \
+    htop \
+    lsof \
+    strace \
+    procps \
+    psmisc \
+    # Web server and PHP
+    nginx \
+    php${PHP_VERSION}-fpm \
+    php${PHP_VERSION}-cli \
+    php${PHP_VERSION}-common \
+    php${PHP_VERSION}-mysql \
+    php${PHP_VERSION}-sqlite3 \
+    php${PHP_VERSION}-redis \
+    php${PHP_VERSION}-xml \
+    php${PHP_VERSION}-mbstring \
+    php${PHP_VERSION}-curl \
+    php${PHP_VERSION}-zip \
+    php${PHP_VERSION}-gd \
+    php${PHP_VERSION}-bcmath \
+    php${PHP_VERSION}-intl \
+    php${PHP_VERSION}-soap \
+    php${PHP_VERSION}-xsl \
+    php${PHP_VERSION}-opcache \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure network tools permissions
