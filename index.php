@@ -961,7 +961,6 @@ if (isset($_GET["action"])) {
                 container.innerHTML = "<p>No devices detected</p>";
                 return;
             }
-            
             let html = "<div class=\"device-list\">";
             devices.forEach(device => {
                 const statusClass = device.status === "online" ? "status-online" : "status-offline";
@@ -987,7 +986,6 @@ if (isset($_GET["action"])) {
             // Calculate delta for display
             let deltaRxDisplay = traffic.rx_bytes || 0;
             let deltaTxDisplay = traffic.tx_bytes || 0;
-    
             if (previousDisplayTraffic !== null) {
                 deltaRxDisplay = Math.max(0, (traffic.rx_bytes || 0) - (previousDisplayTraffic.rx_bytes || 0));
                 deltaTxDisplay = Math.max(0, (traffic.tx_bytes || 0) - (previousDisplayTraffic.tx_bytes || 0));
