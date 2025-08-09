@@ -1183,7 +1183,7 @@ if (isset($_GET["action"])) {
             initTrafficChart();
             loadDashboard();
             // Reduced refresh interval to prevent timeouts
-            refreshInterval = setInterval(loadDashboard, 60000); // Refresh every 60 seconds
+            refreshInterval = setInterval(loadDashboard, 1000); // Refresh every 60 seconds
         });
         
         // Cleanup on page unload
