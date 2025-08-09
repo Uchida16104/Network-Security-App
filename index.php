@@ -828,9 +828,9 @@ if (isset($_GET["action"])) {
     </div>
 
     <script>
-        // Global variables
         let refreshInterval;
         let trafficChart;
+        let previousTraffic = null;
         let trafficData = {
             labels: [],
             datasets: [{
@@ -848,7 +848,6 @@ if (isset($_GET["action"])) {
             }]
         };
         
-        // Initialize traffic chart
         function initTrafficChart() {
             const ctx = document.getElementById('trafficChart').getContext('2d');
             trafficChart = new Chart(ctx, {
@@ -876,23 +875,30 @@ if (isset($_GET["action"])) {
                 }
             });
         }
-        
-        // Update traffic chart
+
         function updateTrafficChart(traffic) {
             const now = new Date().toLocaleTimeString();
-            
-            trafficData.labels.push(now);
-            trafficData.datasets[0].data.push(traffic.rx_bytes || 0);
-            trafficData.datasets[1].data.push(traffic.tx_bytes || 0);
-            
-            // Keep only last 10 data points
-            if (trafficData.labels.length > 10) {
-                trafficData.labels.shift();
-                trafficData.datasets[0].data.shift();
-                trafficData.datasets[1].data.shift();
+            let deltaRx = 0;
+            let deltaTx = 0;
+            if (previousTraffic !== null) {
+                deltaRx = Math.max(0, (traffic.rx_bytes || 0) - (previousTraffic.rx_bytes || 0));
+                deltaTx = Math.max(0, (traffic.tx_bytes || 0) - (previousTraffic.tx_bytes || 0));
             }
-            
-            trafficChart.update('none');
+            previousTraffic = {
+                rx_bytes: traffic.rx_bytes || 0,
+                tx_bytes: traffic.tx_bytes || 0
+            };
+            if (previousTraffic.rx_bytes > 0 || previousTraffic.tx_bytes > 0) {
+                trafficData.labels.push(now);
+                trafficData.datasets[0].data.push(deltaRx);
+                trafficData.datasets[1].data.push(deltaTx);
+                if (trafficData.labels.length > 10) {
+                    trafficData.labels.shift();
+                    trafficData.datasets[0].data.shift();
+                    trafficData.datasets[1].data.shift();
+                }
+                trafficChart.update('none');
+            }
         }
         
         // Load dashboard with error handling and timeout
