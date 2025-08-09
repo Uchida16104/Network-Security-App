@@ -980,8 +980,24 @@ if (isset($_GET["action"])) {
             container.innerHTML = html;
         }
         
+        // Global variables for traffic display delta calculation
+        let previousDisplayTraffic = null;
         function updateNetworkTraffic(traffic) {
             const container = document.getElementById("network-traffic");
+            // Calculate delta for display
+            let deltaRxDisplay = traffic.rx_bytes || 0;
+            let deltaTxDisplay = traffic.tx_bytes || 0;
+    
+            if (previousDisplayTraffic !== null) {
+                deltaRxDisplay = Math.max(0, (traffic.rx_bytes || 0) - (previousDisplayTraffic.rx_bytes || 0));
+                deltaTxDisplay = Math.max(0, (traffic.tx_bytes || 0) - (previousDisplayTraffic.tx_bytes || 0));
+            }
+            // Update previous values
+            previousDisplayTraffic = {
+                rx_bytes: traffic.rx_bytes || 0,
+                tx_bytes: traffic.tx_bytes || 0
+    
+            };
             container.innerHTML = `
                 <div class="device-item">
                     <span>Interface</span>
@@ -989,11 +1005,11 @@ if (isset($_GET["action"])) {
                 </div>
                 <div class="device-item">
                     <span>RX Bytes</span>
-                    <span>${formatBytes(traffic.rx_bytes || 0)}</span>
+                    <span>${formatBytes(deltaRxDisplay)}</span>
                 </div>
                 <div class="device-item">
                     <span>TX Bytes</span>
-                    <span>${formatBytes(traffic.tx_bytes || 0)}</span>
+                    <span>${formatBytes(deltaTxDisplay)}</span>
                 </div>
             `;
         }
