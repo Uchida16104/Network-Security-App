@@ -750,6 +750,52 @@ if (isset($_GET["action"])) {
             color: #718096;
             margin-top: 5px;
         }
+
+        /* PC Network Info Styles */
+        .pc-network-card {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            color: white;
+            border: none;
+        }
+
+        .pc-network-card h3 {
+            color: white;
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .network-chart {
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .realtime-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .realtime-metric {
+            text-align: center;
+            padding: 12px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+        }
+
+        .realtime-metric-value {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 5px;
+        }
+
+        .realtime-metric-label {
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.8);
+        }
     </style>
 </head>
 <body>
@@ -761,6 +807,35 @@ if (isset($_GET["action"])) {
         </div>
         
         <div class="dashboard">
+            <!-- PC Network Information Card -->
+            <div class="card pc-network-card">
+                <h3>💻 PC Network Information</h3>
+                <div id="pc-network-info">
+                    <div class="loading pulse">Detecting PC network...</div>
+                </div>
+                <div class="realtime-metrics" id="pc-metrics">
+                    <div class="realtime-metric">
+                        <div class="realtime-metric-value" id="pc-ip">-</div>
+                        <div class="realtime-metric-label">Your IP</div>
+                    </div>
+                    <div class="realtime-metric">
+                        <div class="realtime-metric-value" id="pc-connection">-</div>
+                        <div class="realtime-metric-label">Connection</div>
+                    </div>
+                    <div class="realtime-metric">
+                        <div class="realtime-metric-value" id="pc-latency">-</div>
+                        <div class="realtime-metric-label">Latency (ms)</div>
+                    </div>
+                    <div class="realtime-metric">
+                        <div class="realtime-metric-value" id="pc-bandwidth">-</div>
+                        <div class="realtime-metric-label">Est. Speed</div>
+                    </div>
+                </div>
+                <div class="network-chart">
+                    <canvas id="pcNetworkChart" style="max-height: 150px;"></canvas>
+                </div>
+            </div>
+
             <div class="card">
                 <h3>🖥️ System Status</h3>
                 <div id="system-status">
@@ -802,9 +877,6 @@ if (isset($_GET["action"])) {
             <button class="btn" onclick="runAnalysis()" id="analysis-btn">🔄 Run Analysis</button>
             
             <div class="metrics" id="analysis-metrics" style="display: none;">
-                <div class="metric">
-                    <div class="metric-value" id="hosts-count">0</div>
-                    <div class="metric-label">Hosts Found</div>
                 </div>
                 <div class="metric">
                     <div class="metric-value" id="connections-count">0</div>
@@ -830,7 +902,22 @@ if (isset($_GET["action"])) {
     <script>
         let refreshInterval;
         let trafficChart;
+        let pcNetworkChart;
         let previousTraffic = null;
+        let pcNetworkData = {
+            labels: [],
+            datasets: [{
+                label: 'Latency (ms)',
+                data: [],
+                borderColor: 'rgba(255, 255, 255, 0.9)',
+                backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                tension: 0.4,
+                borderWidth: 2,
+                pointBackgroundColor: 'white',
+                pointBorderColor: 'rgba(255, 255, 255, 0.8)'
+            }]
+        };
+        
         let trafficData = {
             labels: [],
             datasets: [{
@@ -847,6 +934,157 @@ if (isset($_GET["action"])) {
                 tension: 0.1
             }]
         };
+
+        // PC Network Information Functions
+        let pcNetworkInfo = {
+            ip: null,
+            connection: 'Unknown',
+            latency: 0,
+            bandwidth: 'Unknown',
+            lastUpdate: 0
+        };
+
+        function detectPCNetworkInfo() {
+            // Get user's IP address
+            fetch('https://api.ipify.org?format=json')
+                .then(response => response.json())
+                .then(data => {
+                    pcNetworkInfo.ip = data.ip;
+                    updatePCNetworkDisplay();
+                })
+                .catch(() => {
+                    pcNetworkInfo.ip = 'Unknown';
+                    updatePCNetworkDisplay();
+                });
+
+            // Test connection speed and latency
+            measureNetworkPerformance();
+        }
+
+        function measureNetworkPerformance() {
+            const startTime = performance.now();
+            
+            fetch('/?action=health-check', { 
+                cache: 'no-cache',
+                headers: {
+                    'Cache-Control': 'no-cache'
+                }
+            })
+                .then(response => {
+                    const endTime = performance.now();
+                    const latency = Math.round(endTime - startTime);
+                    
+                    pcNetworkInfo.latency = latency;
+                    pcNetworkInfo.connection = response.ok ? 'Connected' : 'Limited';
+                    
+                    // Estimate bandwidth based on latency
+                    if (latency < 50) {
+                        pcNetworkInfo.bandwidth = 'High Speed';
+                    } else if (latency < 200) {
+                        pcNetworkInfo.bandwidth = 'Medium';
+                    } else {
+                        pcNetworkInfo.bandwidth = 'Slow';
+                    }
+                    
+                    updatePCNetworkDisplay();
+                    updatePCNetworkChart(latency);
+                })
+                .catch(error => {
+                    pcNetworkInfo.latency = 9999;
+                    pcNetworkInfo.connection = 'Disconnected';
+                    pcNetworkInfo.bandwidth = 'No Connection';
+                    updatePCNetworkDisplay();
+                });
+        }
+
+        function updatePCNetworkDisplay() {
+            document.getElementById('pc-ip').textContent = pcNetworkInfo.ip || 'Unknown';
+            document.getElementById('pc-connection').textContent = pcNetworkInfo.connection;
+            document.getElementById('pc-latency').textContent = pcNetworkInfo.latency === 9999 ? 'N/A' : pcNetworkInfo.latency;
+            document.getElementById('pc-bandwidth').textContent = pcNetworkInfo.bandwidth;
+
+            // Update the main info display
+            const container = document.getElementById('pc-network-info');
+            container.innerHTML = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 10px;">
+                    <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 5px;">
+                        <div style="font-size: 0.9rem; opacity: 0.8;">Public IP</div>
+                        <div style="font-weight: bold;">${pcNetworkInfo.ip || 'Detecting...'}</div>
+                    </div>
+                    <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 5px;">
+                        <div style="font-size: 0.9rem; opacity: 0.8;">Status</div>
+                        <div style="font-weight: bold;">${pcNetworkInfo.connection}</div>
+                    </div>
+                </div>
+                <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 5px;">
+                    <div style="font-size: 0.9rem; opacity: 0.8;">Network Performance</div>
+                    <div style="font-weight: bold;">${pcNetworkInfo.latency === 9999 ? 'No Connection' : pcNetworkInfo.latency + 'ms latency'}</div>
+                </div>
+            `;
+        }
+
+        function updatePCNetworkChart(latency) {
+            const now = new Date().toLocaleTimeString();
+            
+            pcNetworkData.labels.push(now);
+            pcNetworkData.datasets[0].data.push(latency === 9999 ? null : latency);
+            
+            // Keep only last 10 data points
+            if (pcNetworkData.labels.length > 10) {
+                pcNetworkData.labels.shift();
+                pcNetworkData.datasets[0].data.shift();
+            }
+            
+            if (pcNetworkChart) {
+                pcNetworkChart.update('none');
+            }
+        }
+
+        function initPCNetworkChart() {
+            const ctx = document.getElementById('pcNetworkChart').getContext('2d');
+            pcNetworkChart = new Chart(ctx, {
+                type: 'line',
+                data: pcNetworkData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 500,
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.8)',
+                                callback: function(value) {
+                                    return value + 'ms';
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.8)',
+                                maxTicksLimit: 5
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    elements: {
+                        point: {
+                            radius: 4
+                        }
+                    }
+                }
+            });
+        }
         
         function initTrafficChart() {
             const ctx = document.getElementById('trafficChart').getContext('2d');
@@ -1181,9 +1419,15 @@ if (isset($_GET["action"])) {
         // Initialize
         document.addEventListener("DOMContentLoaded", function() {
             initTrafficChart();
+            initPCNetworkChart();
             loadDashboard();
+            detectPCNetworkInfo();
+            
             // Reduced refresh interval to prevent timeouts
-            refreshInterval = setInterval(loadDashboard, 1000); // Refresh every 60 seconds
+            refreshInterval = setInterval(() => {
+                loadDashboard();
+                measureNetworkPerformance(); // Update PC network info
+            }, 5000); // Refresh every 5 seconds for real-time updates
         });
         
         // Cleanup on page unload
