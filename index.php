@@ -1427,7 +1427,7 @@ if (isset($_GET["action"])) {
             refreshInterval = setInterval(() => {
                 loadDashboard();
                 measureNetworkPerformance(); // Update PC network info
-            }, 5000); // Refresh every 5 seconds for real-time updates
+            }, 1000); // Refresh every 1 second for real-time updates
         });
         
         // Cleanup on page unload
