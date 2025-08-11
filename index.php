@@ -1218,7 +1218,7 @@ if (isset($_GET["action"])) {
         </div>
         
         <div class="footer">
-            <p>&copy; 2024 Hirotoshi Uchida - Network Security App</p>
+            <p>&copy; 2025 Hirotoshi Uchida - Network Security App</p>
             <p>Visit: <a href="https://hirotoshiuchida.onrender.com" target="_blank">https://hirotoshiuchida.onrender.com</a></p>
         </div>
     </div>
