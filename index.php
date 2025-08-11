@@ -1823,7 +1823,7 @@ if (isset($_GET["action"])) {
                 } catch (error) {
                     console.error("Refresh error:", error);
                 }
-            }, 5000); // Refresh every 5 seconds for better stability
+            }, 1000); // Refresh every second for better stability
         });
         
         // Cleanup on page unload
