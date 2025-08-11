@@ -94,41 +94,103 @@ class NetworkController {
             "vulnerabilities" => []
         ];
         
-        // Quick ARP scan only for better performance
-        $arpCommand = "timeout 30 arp-scan -l 2>/dev/null | head -20";
+        // Enhanced network scanning with multiple methods
+        $devices = [];
+        
+        // Method 1: ARP scan (most reliable for local network)
+        $arpCommand = "timeout 30 arp-scan -l 2>/dev/null || timeout 30 arp-scan --interface=eth0 --local 2>/dev/null";
         $arpOutput = shell_exec($arpCommand);
         
         if ($arpOutput) {
             $arpDevices = $this->parseArpScan($arpOutput);
-            $results["devices"] = array_merge($results["devices"], $arpDevices);
+            $devices = array_merge($devices, $arpDevices);
         }
         
-        // Fallback ARP table check
-        $arpTableCommand = "timeout 10 arp -a 2>/dev/null | head -10";
+        // Method 2: ARP table check
+        $arpTableCommand = "arp -a 2>/dev/null || cat /proc/net/arp 2>/dev/null";
         $arpTableOutput = shell_exec($arpTableCommand);
         
         if ($arpTableOutput) {
             $tableDevices = $this->parseArpTable($arpTableOutput);
             foreach ($tableDevices as $device) {
                 $found = false;
-                foreach ($results["devices"] as $existing) {
+                foreach ($devices as $existing) {
                     if ($existing["ip"] === $device["ip"]) {
                         $found = true;
                         break;
                     }
                 }
                 if (!$found) {
-                    $results["devices"][] = $device;
+                    $devices[] = $device;
                 }
             }
         }
         
+        // Method 3: NMAP ping scan for comprehensive discovery
+        $nmapCommand = "timeout 20 nmap -sn {$networkRange} 2>/dev/null | grep -E 'Nmap scan report|MAC Address'";
+        $nmapOutput = shell_exec($nmapCommand);
+        
+        if ($nmapOutput) {
+            $nmapDevices = $this->parseNmapScan($nmapOutput);
+            foreach ($nmapDevices as $device) {
+                $found = false;
+                foreach ($devices as $existing) {
+                    if ($existing["ip"] === $device["ip"]) {
+                        $found = true;
+                        break;
+                    }
+                }
+                if (!$found) {
+                    $devices[] = $device;
+                }
+            }
+        }
+        
+        // Method 4: IP neighbor discovery (modern Linux)
+        $ipCommand = "ip neighbor show 2>/dev/null";
+        $ipOutput = shell_exec($ipCommand);
+        
+        if ($ipOutput) {
+            $ipDevices = $this->parseIpNeighbor($ipOutput);
+            foreach ($ipDevices as $device) {
+                $found = false;
+                foreach ($devices as $existing) {
+                    if ($existing["ip"] === $device["ip"]) {
+                        $found = true;
+                        break;
+                    }
+                }
+                if (!$found) {
+                    $devices[] = $device;
+                }
+            }
+        }
+        
+        // Enhance device information with hostname resolution and vendor lookup
+        foreach ($devices as &$device) {
+            // Try to resolve hostname
+            if (empty($device["hostname"])) {
+                $hostname = $this->resolveHostname($device["ip"]);
+                if ($hostname && $hostname !== $device["ip"]) {
+                    $device["hostname"] = $hostname;
+                }
+            }
+            
+            // Add vendor information based on MAC address
+            if (!empty($device["mac"])) {
+                $device["vendor"] = $this->getVendorFromMac($device["mac"]);
+            }
+            
+            // Add device type classification
+            $device["device_type"] = $this->classifyDevice($device);
+        }
+        
         // Sort and limit results
-        usort($results["devices"], function($a, $b) {
+        usort($devices, function($a, $b) {
             return ip2long($a["ip"]) - ip2long($b["ip"]);
         });
         
-        $results["devices"] = array_slice($results["devices"], 0, 20);
+        $results["devices"] = array_slice($devices, 0, 50); // Increased limit for better discovery
         
         return $results;
     }
@@ -136,17 +198,39 @@ class NetworkController {
     private function getActiveDevicesQuick() {
         $devices = [];
         
-        // Quick ARP table check
-        $arpCommand = "timeout 5 arp -a 2>/dev/null | head -5";
+        // Multiple discovery methods for better coverage
+        
+        // Method 1: ARP table
+        $arpCommand = "arp -a 2>/dev/null || cat /proc/net/arp 2>/dev/null";
         $arpOutput = shell_exec($arpCommand);
         
         if ($arpOutput) {
             $devices = $this->parseArpTable($arpOutput);
         }
         
+        // Method 2: IP neighbor (modern Linux)
+        $ipCommand = "ip neighbor show 2>/dev/null";
+        $ipOutput = shell_exec($ipCommand);
+        
+        if ($ipOutput) {
+            $ipDevices = $this->parseIpNeighbor($ipOutput);
+            foreach ($ipDevices as $device) {
+                $found = false;
+                foreach ($devices as $existing) {
+                    if ($existing["ip"] === $device["ip"]) {
+                        $found = true;
+                        break;
+                    }
+                }
+                if (!$found) {
+                    $devices[] = $device;
+                }
+            }
+        }
+        
         // Add gateway as a device
         $gateway = $this->getGateway();
-        if ($gateway && !empty($devices)) {
+        if ($gateway) {
             $gatewayExists = false;
             foreach ($devices as $device) {
                 if ($device["ip"] === $gateway) {
@@ -159,13 +243,28 @@ class NetworkController {
                     "ip" => $gateway,
                     "mac" => "",
                     "hostname" => "Gateway",
+                    "vendor" => "Network Gateway",
                     "status" => "online",
+                    "device_type" => "gateway",
                     "last_seen" => date("c")
                 ]);
             }
         }
         
-        return array_slice($devices, 0, 10);
+        // Enhance device information
+        foreach ($devices as &$device) {
+            if (empty($device["hostname"])) {
+                $device["hostname"] = $this->resolveHostname($device["ip"]);
+            }
+            if (!empty($device["mac"]) && empty($device["vendor"])) {
+                $device["vendor"] = $this->getVendorFromMac($device["mac"]);
+            }
+            if (empty($device["device_type"])) {
+                $device["device_type"] = $this->classifyDevice($device);
+            }
+        }
+        
+        return array_slice($devices, 0, 20);
     }
     
     private function getNetworkTraffic() {
@@ -245,7 +344,7 @@ class NetworkController {
         return $topology;
     }
     
-    // Parser methods
+    // Enhanced parser methods
     private function parseArpScan($output) {
         $devices = [];
         $lines = explode("\n", $output);
@@ -256,7 +355,9 @@ class NetworkController {
                     "ip" => $matches[1],
                     "mac" => strtolower($matches[2]),
                     "hostname" => "",
+                    "vendor" => "",
                     "status" => "online",
+                    "device_type" => "",
                     "last_seen" => date("c")
                 ];
             }
@@ -270,18 +371,178 @@ class NetworkController {
         $lines = explode("\n", $output);
         
         foreach ($lines as $line) {
+            // Parse different ARP table formats
             if (preg_match("/\(([0-9.]+)\) at ([0-9a-f:]+)/i", $line, $matches)) {
                 $devices[] = [
                     "ip" => $matches[1],
                     "mac" => strtolower($matches[2]),
                     "hostname" => "",
+                    "vendor" => "",
                     "status" => "online",
+                    "device_type" => "",
+                    "last_seen" => date("c")
+                ];
+            } elseif (preg_match("/([0-9.]+)\s+0x\d+\s+0x\d+\s+([0-9a-f:]+)/i", $line, $matches)) {
+                // /proc/net/arp format
+                $devices[] = [
+                    "ip" => $matches[1],
+                    "mac" => strtolower($matches[2]),
+                    "hostname" => "",
+                    "vendor" => "",
+                    "status" => "online",
+                    "device_type" => "",
                     "last_seen" => date("c")
                 ];
             }
         }
         
         return $devices;
+    }
+    
+    private function parseNmapScan($output) {
+        $devices = [];
+        $lines = explode("\n", $output);
+        $currentIp = null;
+        
+        foreach ($lines as $line) {
+            if (preg_match("/Nmap scan report for (.+)/", $line, $matches)) {
+                $host = trim($matches[1]);
+                if (preg_match("/([0-9.]+)$/", $host, $ipMatches)) {
+                    $currentIp = $ipMatches[1];
+                } elseif (filter_var($host, FILTER_VALIDATE_IP)) {
+                    $currentIp = $host;
+                }
+            } elseif (preg_match("/MAC Address: ([0-9A-F:]+)/i", $line, $macMatches) && $currentIp) {
+                $devices[] = [
+                    "ip" => $currentIp,
+                    "mac" => strtolower($macMatches[1]),
+                    "hostname" => "",
+                    "vendor" => "",
+                    "status" => "online",
+                    "device_type" => "",
+                    "last_seen" => date("c")
+                ];
+                $currentIp = null;
+            }
+        }
+        
+        return $devices;
+    }
+    
+    private function parseIpNeighbor($output) {
+        $devices = [];
+        $lines = explode("\n", $output);
+        
+        foreach ($lines as $line) {
+            if (preg_match("/([0-9.]+)\s+dev\s+\S+\s+lladdr\s+([0-9a-f:]+)/i", $line, $matches)) {
+                $devices[] = [
+                    "ip" => $matches[1],
+                    "mac" => strtolower($matches[2]),
+                    "hostname" => "",
+                    "vendor" => "",
+                    "status" => "online",
+                    "device_type" => "",
+                    "last_seen" => date("c")
+                ];
+            }
+        }
+        
+        return $devices;
+    }
+    
+    private function resolveHostname($ip) {
+        // Try multiple hostname resolution methods
+        $hostname = gethostbyaddr($ip);
+        if ($hostname && $hostname !== $ip) {
+            return $hostname;
+        }
+        
+        // Try nslookup
+        $nslookup = shell_exec("timeout 2 nslookup {$ip} 2>/dev/null | grep 'name =' | head -1");
+        if ($nslookup && preg_match("/name = (.+)/", $nslookup, $matches)) {
+            return trim($matches[1], '. ');
+        }
+        
+        return "";
+    }
+    
+    private function getVendorFromMac($mac) {
+        // Extract OUI (first 3 octets)
+        $oui = strtoupper(substr(str_replace(':', '', $mac), 0, 6));
+        
+        // Simple OUI to vendor mapping (most common vendors)
+        $vendors = [
+            '00:50:56' => 'VMware',
+            '08:00:27' => 'VirtualBox',
+            '00:0C:29' => 'VMware',
+            '00:1C:42' => 'Parallels',
+            '00:16:3E' => 'Xen',
+            '52:54:00' => 'QEMU/KVM',
+            '00:E0:4C' => 'Realtek',
+            '00:1B:21' => 'Intel',
+            '00:24:D7' => 'Intel',
+            '3C:07:54' => 'Realtek',
+            '48:F8:B3' => 'Realtek',
+            '00:1F:3F' => 'Apple',
+            '28:CF:E9' => 'Apple',
+            'B8:27:EB' => 'Raspberry Pi',
+            'DC:A6:32' => 'Raspberry Pi',
+            'E4:5F:01' => 'Raspberry Pi',
+            '00:D8:61' => 'Samsung',
+            'AC:BC:32' => 'Samsung',
+            '00:26:B0' => 'LG Electronics',
+            '6C:72:20' => 'Amazon',
+            'F0:27:2D' => 'Amazon'
+        ];
+        
+        // Check first 6 characters (OUI)
+        $shortOui = substr($oui, 0, 6);
+        if (isset($vendors[$shortOui])) {
+            return $vendors[$shortOui];
+        }
+        
+        // Check full MAC pattern
+        $macFormatted = substr($oui, 0, 2) . ':' . substr($oui, 2, 2) . ':' . substr($oui, 4, 2);
+        if (isset($vendors[$macFormatted])) {
+            return $vendors[$macFormatted];
+        }
+        
+        return "Unknown Vendor";
+    }
+    
+    private function classifyDevice($device) {
+        $ip = $device["ip"];
+        $hostname = strtolower($device["hostname"] ?? "");
+        $vendor = strtolower($device["vendor"] ?? "");
+        
+        // Gateway detection
+        if ($ip === $this->getGateway() || strpos($hostname, 'gateway') !== false || strpos($hostname, 'router') !== false) {
+            return "gateway";
+        }
+        
+        // Server detection
+        if (strpos($hostname, 'server') !== false || strpos($hostname, 'srv') !== false) {
+            return "server";
+        }
+        
+        // Mobile device detection
+        if (strpos($hostname, 'iphone') !== false || strpos($hostname, 'android') !== false || 
+            strpos($vendor, 'apple') !== false || strpos($vendor, 'samsung') !== false) {
+            return "mobile";
+        }
+        
+        // IoT device detection
+        if (strpos($vendor, 'raspberry') !== false || strpos($hostname, 'pi') !== false) {
+            return "iot";
+        }
+        
+        // Virtual machine detection
+        if (strpos($vendor, 'vmware') !== false || strpos($vendor, 'virtualbox') !== false || 
+            strpos($vendor, 'qemu') !== false) {
+            return "virtual";
+        }
+        
+        return "computer";
     }
     
     private function detectNetworkInterface() {
@@ -633,12 +894,12 @@ if (isset($_GET["action"])) {
         }
         
         .device-list {
-            max-height: 200px;
+            max-height: 300px;
             overflow-y: auto;
         }
         
         .device-item {
-            padding: 8px 0;
+            padding: 12px 0;
             border-bottom: 1px solid #e2e8f0;
             display: flex;
             justify-content: space-between;
@@ -647,6 +908,64 @@ if (isset($_GET["action"])) {
         
         .device-item:last-child {
             border-bottom: none;
+        }
+        
+        .device-info {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+        
+        .device-main {
+            display: flex;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        
+        .device-details {
+            font-size: 0.85rem;
+            color: #666;
+            margin-left: 20px;
+        }
+        
+        .device-type {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-left: 10px;
+        }
+        
+        .device-type.gateway {
+            background-color: #e6fffa;
+            color: #234e52;
+        }
+        
+        .device-type.computer {
+            background-color: #ebf8ff;
+            color: #2a4365;
+        }
+        
+        .device-type.mobile {
+            background-color: #faf5ff;
+            color: #553c9a;
+        }
+        
+        .device-type.iot {
+            background-color: #f0fff4;
+            color: #22543d;
+        }
+        
+        .device-type.server {
+            background-color: #fffbeb;
+            color: #744210;
+        }
+        
+        .device-type.virtual {
+            background-color: #fef5e7;
+            color: #8b4513;
         }
         
         .btn {
@@ -768,6 +1087,8 @@ if (isset($_GET["action"])) {
             border-radius: 8px;
             padding: 15px;
             margin-top: 15px;
+            position: relative;
+            height: 200px;
         }
 
         .realtime-metrics {
@@ -832,7 +1153,7 @@ if (isset($_GET["action"])) {
                     </div>
                 </div>
                 <div class="network-chart">
-                    <canvas id="pcNetworkChart" style="max-height: 150px;"></canvas>
+                    <canvas id="pcNetworkChart"></canvas>
                 </div>
             </div>
 
@@ -877,6 +1198,9 @@ if (isset($_GET["action"])) {
             <button class="btn" onclick="runAnalysis()" id="analysis-btn">🔄 Run Analysis</button>
             
             <div class="metrics" id="analysis-metrics" style="display: none;">
+                <div class="metric">
+                    <div class="metric-value" id="hosts-count">0</div>
+                    <div class="metric-label">Hosts Found</div>
                 </div>
                 <div class="metric">
                     <div class="metric-value" id="connections-count">0</div>
@@ -998,29 +1322,36 @@ if (isset($_GET["action"])) {
         }
 
         function updatePCNetworkDisplay() {
-            document.getElementById('pc-ip').textContent = pcNetworkInfo.ip || 'Unknown';
-            document.getElementById('pc-connection').textContent = pcNetworkInfo.connection;
-            document.getElementById('pc-latency').textContent = pcNetworkInfo.latency === 9999 ? 'N/A' : pcNetworkInfo.latency;
-            document.getElementById('pc-bandwidth').textContent = pcNetworkInfo.bandwidth;
+            const pcIpElement = document.getElementById('pc-ip');
+            const pcConnectionElement = document.getElementById('pc-connection');
+            const pcLatencyElement = document.getElementById('pc-latency');
+            const pcBandwidthElement = document.getElementById('pc-bandwidth');
+            
+            if (pcIpElement) pcIpElement.textContent = pcNetworkInfo.ip || 'Unknown';
+            if (pcConnectionElement) pcConnectionElement.textContent = pcNetworkInfo.connection;
+            if (pcLatencyElement) pcLatencyElement.textContent = pcNetworkInfo.latency === 9999 ? 'N/A' : pcNetworkInfo.latency;
+            if (pcBandwidthElement) pcBandwidthElement.textContent = pcNetworkInfo.bandwidth;
 
             // Update the main info display
             const container = document.getElementById('pc-network-info');
-            container.innerHTML = `
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 10px;">
-                    <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 5px;">
-                        <div style="font-size: 0.9rem; opacity: 0.8;">Public IP</div>
-                        <div style="font-weight: bold;">${pcNetworkInfo.ip || 'Detecting...'}</div>
+            if (container) {
+                container.innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 10px;">
+                        <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 5px;">
+                            <div style="font-size: 0.9rem; opacity: 0.8;">Public IP</div>
+                            <div style="font-weight: bold;">${pcNetworkInfo.ip || 'Detecting...'}</div>
+                        </div>
+                        <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 5px;">
+                            <div style="font-size: 0.9rem; opacity: 0.8;">Status</div>
+                            <div style="font-weight: bold;">${pcNetworkInfo.connection}</div>
+                        </div>
                     </div>
                     <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 5px;">
-                        <div style="font-size: 0.9rem; opacity: 0.8;">Status</div>
-                        <div style="font-weight: bold;">${pcNetworkInfo.connection}</div>
+                        <div style="font-size: 0.9rem; opacity: 0.8;">Network Performance</div>
+                        <div style="font-weight: bold;">${pcNetworkInfo.latency === 9999 ? 'No Connection' : pcNetworkInfo.latency + 'ms latency'}</div>
                     </div>
-                </div>
-                <div style="text-align: center; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 5px;">
-                    <div style="font-size: 0.9rem; opacity: 0.8;">Network Performance</div>
-                    <div style="font-weight: bold;">${pcNetworkInfo.latency === 9999 ? 'No Connection' : pcNetworkInfo.latency + 'ms latency'}</div>
-                </div>
-            `;
+                `;
+            }
         }
 
         function updatePCNetworkChart(latency) {
@@ -1036,13 +1367,26 @@ if (isset($_GET["action"])) {
             }
             
             if (pcNetworkChart) {
+                // Dynamic Y-axis scaling based on current data
+                const validData = pcNetworkData.datasets[0].data.filter(d => d !== null && d !== undefined);
+                if (validData.length > 0) {
+                    const maxLatency = Math.max(...validData);
+                    const minLatency = Math.min(...validData);
+                    const padding = (maxLatency - minLatency) * 0.1 || 50;
+                    
+                    pcNetworkChart.options.scales.y.min = Math.max(0, minLatency - padding);
+                    pcNetworkChart.options.scales.y.max = maxLatency + padding;
+                }
+                
                 pcNetworkChart.update('none');
             }
         }
 
         function initPCNetworkChart() {
-            const ctx = document.getElementById('pcNetworkChart').getContext('2d');
-            pcNetworkChart = new Chart(ctx, {
+            const ctx = document.getElementById('pcNetworkChart');
+            if (!ctx) return;
+            
+            pcNetworkChart = new Chart(ctx.getContext('2d'), {
                 type: 'line',
                 data: pcNetworkData,
                 options: {
@@ -1050,7 +1394,8 @@ if (isset($_GET["action"])) {
                     maintainAspectRatio: false,
                     scales: {
                         y: {
-                            beginAtZero: true,
+                            beginAtZero: false,
+                            min: 0,
                             max: 500,
                             ticks: {
                                 color: 'rgba(255, 255, 255, 0.8)',
@@ -1087,8 +1432,10 @@ if (isset($_GET["action"])) {
         }
         
         function initTrafficChart() {
-            const ctx = document.getElementById('trafficChart').getContext('2d');
-            trafficChart = new Chart(ctx, {
+            const ctx = document.getElementById('trafficChart');
+            if (!ctx) return;
+            
+            trafficChart = new Chart(ctx.getContext('2d'), {
                 type: 'line',
                 data: trafficData,
                 options: {
@@ -1115,6 +1462,8 @@ if (isset($_GET["action"])) {
         }
 
         function updateTrafficChart(traffic) {
+            if (!trafficChart) return;
+            
             const now = new Date().toLocaleTimeString();
             let deltaRx = 0;
             let deltaTx = 0;
@@ -1177,6 +1526,8 @@ if (isset($_GET["action"])) {
         
         function updateSystemStatus(status) {
             const container = document.getElementById("system-status");
+            if (!container) return;
+            
             container.innerHTML = `
                 <div class="device-item">
                     <span>Status</span>
@@ -1195,6 +1546,8 @@ if (isset($_GET["action"])) {
         
         function updateNetworkDevices(devices) {
             const container = document.getElementById("network-devices");
+            if (!container) return;
+            
             if (!devices || devices.length === 0) {
                 container.innerHTML = "<p>No devices detected</p>";
                 return;
@@ -1202,14 +1555,24 @@ if (isset($_GET["action"])) {
             let html = "<div class=\"device-list\">";
             devices.forEach(device => {
                 const statusClass = device.status === "online" ? "status-online" : "status-offline";
-                const displayName = device.hostname || device.mac || "Unknown";
+                const hostname = device.hostname || "Unknown Host";
+                const vendor = device.vendor || "Unknown Vendor";
+                const deviceType = device.device_type || "computer";
+                
                 html += `
                     <div class="device-item">
-                        <span>
-                            <span class="status-indicator ${statusClass}"></span>
-                            ${device.ip}
-                        </span>
-                        <span>${displayName.substring(0, 20)}</span>
+                        <div class="device-info">
+                            <div class="device-main">
+                                <span class="status-indicator ${statusClass}"></span>
+                                <strong>${device.ip}</strong>
+                                <span class="device-type ${deviceType}">${deviceType}</span>
+                            </div>
+                            <div class="device-details">
+                                <div>📱 ${hostname}</div>
+                                <div>🏢 ${vendor}</div>
+                                ${device.mac ? `<div>🔧 ${device.mac.toUpperCase()}</div>` : ''}
+                            </div>
+                        </div>
                     </div>
                 `;
             });
@@ -1221,6 +1584,8 @@ if (isset($_GET["action"])) {
         let previousDisplayTraffic = null;
         function updateNetworkTraffic(traffic) {
             const container = document.getElementById("network-traffic");
+            if (!container) return;
+            
             // Calculate delta for display
             let deltaRxDisplay = traffic.rx_bytes || 0;
             let deltaTxDisplay = traffic.tx_bytes || 0;
@@ -1252,6 +1617,8 @@ if (isset($_GET["action"])) {
         
         function updateSecurityAlerts(alerts) {
             const container = document.getElementById("security-alerts");
+            if (!container) return;
+            
             if (!alerts || alerts.length === 0) {
                 container.innerHTML = "<p style=\"color: #38a169;\">✅ No security alerts</p>";
                 return;
@@ -1273,6 +1640,8 @@ if (isset($_GET["action"])) {
         
         function scanNetwork() {
             const btn = document.getElementById("scan-btn");
+            if (!btn) return;
+            
             btn.disabled = true;
             btn.textContent = "🔍 Scanning...";
             
@@ -1295,7 +1664,7 @@ if (isset($_GET["action"])) {
                 .then(data => {
                     if (data.success) {
                         updateNetworkDevices(data.data.devices);
-                        showSuccess("Network scan completed");
+                        showSuccess(`Network scan completed - Found ${data.data.devices.length} devices`);
                     } else {
                         showError("Network scan failed");
                     }
@@ -1315,6 +1684,8 @@ if (isset($_GET["action"])) {
             const btn = document.getElementById("analysis-btn");
             const container = document.getElementById("network-analysis");
             const metrics = document.getElementById("analysis-metrics");
+            
+            if (!btn || !container || !metrics) return;
             
             btn.disabled = true;
             btn.textContent = "🔄 Analyzing...";
@@ -1368,11 +1739,17 @@ if (isset($_GET["action"])) {
                         
                         container.innerHTML = html;
                         
-                        // Update metrics
-                        document.getElementById("hosts-count").textContent = hostCount;
-                        document.getElementById("connections-count").textContent = connCount;
-                        document.getElementById("ports-count").textContent = portCount;
-                        document.getElementById("execution-time").textContent = (data.execution_time || 0).toFixed(2);
+                        // Update metrics - check if elements exist before setting
+                        const hostsCountEl = document.getElementById("hosts-count");
+                        const connectionsCountEl = document.getElementById("connections-count");
+                        const portsCountEl = document.getElementById("ports-count");
+                        const executionTimeEl = document.getElementById("execution-time");
+                        
+                        if (hostsCountEl) hostsCountEl.textContent = hostCount;
+                        if (connectionsCountEl) connectionsCountEl.textContent = connCount;
+                        if (portsCountEl) portsCountEl.textContent = portCount;
+                        if (executionTimeEl) executionTimeEl.textContent = (data.execution_time || 0).toFixed(2);
+                        
                         metrics.style.display = "grid";
                         
                         showSuccess("Network analysis completed");
@@ -1405,7 +1782,11 @@ if (isset($_GET["action"])) {
             notification.className = "error";
             notification.textContent = message;
             document.body.insertBefore(notification, document.body.firstChild);
-            setTimeout(() => notification.remove(), 5000);
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
         }
         
         function showSuccess(message) {
@@ -1413,21 +1794,36 @@ if (isset($_GET["action"])) {
             notification.className = "success";
             notification.textContent = message;
             document.body.insertBefore(notification, document.body.firstChild);
-            setTimeout(() => notification.remove(), 3000);
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 3000);
         }
         
         // Initialize
         document.addEventListener("DOMContentLoaded", function() {
-            initTrafficChart();
-            initPCNetworkChart();
+            // Initialize charts with error handling
+            try {
+                initTrafficChart();
+                initPCNetworkChart();
+            } catch (error) {
+                console.error("Chart initialization error:", error);
+            }
+            
+            // Initial data load
             loadDashboard();
             detectPCNetworkInfo();
             
             // Reduced refresh interval to prevent timeouts
             refreshInterval = setInterval(() => {
-                loadDashboard();
-                measureNetworkPerformance(); // Update PC network info
-            }, 1000); // Refresh every 1 second for real-time updates
+                try {
+                    loadDashboard();
+                    measureNetworkPerformance(); // Update PC network info
+                } catch (error) {
+                    console.error("Refresh error:", error);
+                }
+            }, 5000); // Refresh every 5 seconds for better stability
         });
         
         // Cleanup on page unload
@@ -1435,6 +1831,12 @@ if (isset($_GET["action"])) {
             if (refreshInterval) {
                 clearInterval(refreshInterval);
             }
+        });
+        
+        // Add error handling for fetch requests
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Unhandled promise rejection:', event.reason);
+            showError('Connection error occurred');
         });
     </script>
 </body>
