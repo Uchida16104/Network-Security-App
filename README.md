@@ -1,5 +1,7 @@
 # 🛡️ Network Security App
 
+[![GHCR](https://img.shields.io/badge/NetworkSecurityApp-red?logo=docker)](https://hub.docker.com/r/hirotoshiuchida/network-security-app)
+
 Real-time network monitoring and security analysis application built with PHP and modern web technologies.
 
 **Author:** Hirotoshi Uchida  
